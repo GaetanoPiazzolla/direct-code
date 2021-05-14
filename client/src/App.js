@@ -25,7 +25,7 @@ class App extends React.Component {
 
   defaultState = {
     messages: [],
-    lockStatus: this.LOCK_ACQUIRED,
+    lockStatus: this.LOCK_FAILED,
     code: 'public class Ciao { \n' +
       '   public static void main(String[] args) { \n\n   } \n' +
       '}'
@@ -44,6 +44,7 @@ class App extends React.Component {
     this.http.get(ENDPOINT + 'latest-code').then(data => {
       if (data?.data?.code) {
         this.setState({code: data.data.code})
+        this.setState({lockStatus: this.LOCK_ACQUIRED})
       }
     })
 
@@ -51,8 +52,10 @@ class App extends React.Component {
     this.uuid = generateUniqueID();
 
     this.socket.on("update-code", data => {
-      if (this.uuid !== data.uuid)
+      if (this.uuid !== data.uuid) {
         this.setState({code: data.code});
+        this.setState({lockStatus: this.LOCK_FAILED})
+      }
     });
 
     this.socket.on("code-locked", data => {
