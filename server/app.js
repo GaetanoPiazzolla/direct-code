@@ -5,10 +5,8 @@ const cors = require('cors')
 const bodyParser = require('body-parser');
 
 const port = process.env.PORT || 4001;
-const index = require("./routes/index");
 
 const app = express();
-app.use(index);
 app.use(cors());
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(bodyParser.json());
@@ -44,7 +42,7 @@ io.on("connection", (socket) => {
     console.log("Client disconnected");
     countClient--;
     if (countClient === 0) {
-      io.emit('code-unlocked', msg)
+      io.emit('code-unlocked', {uuid: 'server'})
     }
   });
 
