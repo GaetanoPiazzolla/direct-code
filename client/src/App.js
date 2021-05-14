@@ -9,6 +9,7 @@ import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-markup';
 import './styles.css';
 import debounce from 'lodash.debounce';
+import throttle from 'lodash.throttle';
 import axios from 'axios';
 
 require('prismjs/components/prism-java');
@@ -24,7 +25,7 @@ class App extends React.Component {
 
   defaultState = {
     messages: [],
-    lockStatus: this.LOCK_RELEASED,
+    lockStatus: this.LOCK_ACQUIRED,
     code: 'public class Ciao { \n' +
       '   public static void main(String[] args) { \n\n   } \n' +
       '}'
@@ -38,15 +39,13 @@ class App extends React.Component {
   socket;
   uuid;
 
-  releaseLock() {
-    if (this.state.lockStatus === this.LOCK_ACQUIRED) {
-      this.http.get(ENDPOINT + 'release-lock').then(() => {
-        this.setState({lockStatus: this.LOCK_RELEASED})
-      })
-    }
-  }
-
   componentDidMount() {
+
+    this.http.get(ENDPOINT + 'latest-code').then(data => {
+      if (data?.data?.code) {
+        this.setState({code: data.data.code})
+      }
+    })
 
     this.socket = socketIOClient(ENDPOINT);
     this.uuid = generateUniqueID();
@@ -56,45 +55,45 @@ class App extends React.Component {
         this.setState({code: data.code});
     });
 
-    this.http.get(ENDPOINT + 'latest-code').then(data => {
-      if (data?.data?.code) {
-        this.setState({code: data.data.code})
-      }
-    })
-
-    window.addEventListener("beforeunload", (ev) => {
-      this.releaseLock()
+    this.socket.on("code-locked", data => {
+      if (this.uuid !== data.uuid)
+        this.setState({lockStatus: this.LOCK_FAILED})
     });
 
-  }
+    this.socket.on("code-unlocked", data => {
+      if (this.uuid !== data.uuid)
+        this.setState({lockStatus: this.LOCK_ACQUIRED})
+    })
 
-  componentWillUnmount() {
-    this.releaseLock()
+
   }
 
   changeEditorValue = (event) => {
-    this.setState({code: event});
+    this.setState({code: event})
+    this.emitCodeLocked()
     this.emitUpdateCode(event)
+    this.emitCodeUnlocked()
   }
 
-  emitUpdateCode = debounce((event) => {
+  emitUpdateCode = throttle((event) => {
     this.socket.emit("update-code", {
       uuid: this.uuid,
       code: event
-    });
-  }, 200)
+    })
+  }, 500)
 
-  requireLock = (event) => {
-    if (this.state.lockStatus !== this.LOCK_ACQUIRED) {
-      this.http.get(ENDPOINT + 'require-lock').then(data => {
-        if (data?.data?.granted) {
-          this.setState({lockStatus: this.LOCK_ACQUIRED})
-        } else {
-          this.setState({lockStatus: this.LOCK_FAILED})
-        }
-      })
-    }
-  }
+  emitCodeLocked = debounce((event) => {
+    this.socket.emit("code-locked", {
+      uuid: this.uuid
+    })
+  }, 2000, {leading: true, trailing: false})
+
+  emitCodeUnlocked = debounce((event) => {
+    this.socket.emit("code-unlocked", {
+      uuid: this.uuid
+    })
+  }, 2000)
+
 
   getStyle = () => {
     if (this.state.lockStatus === this.LOCK_ACQUIRED) {
@@ -117,19 +116,13 @@ class App extends React.Component {
 
           <fieldset style={this.getStyle()}>
             <legend><span style={{fontSize: 16, fontWeight: 'bold'}}>Write your code: {this.state.lockStatus}</span>
-              <button style={{marginLeft: '10px'}} onClick={this.releaseLock}
-                      disabled={this.state.lockStatus !== this.LOCK_ACQUIRED}>Release Lock
-              </button>
-              <button style={{marginLeft: '10px'}} onClick={this.requireLock}
-                      disabled={this.state.lockStatus === this.LOCK_ACQUIRED}>Require Lock
-              </button>
             </legend>
             <Editor
               value={this.state.code}
               onValueChange={this.changeEditorValue}
               highlight={code => highlight(code, languages.java, 'java')}
               padding={10}
-              readOnly={this.state.lockStatus !== this.LOCK_ACQUIRED}
+              readOnly={this.state.lockStatus === this.LOCK_FAILED}
             />
           </fieldset>
         </div>

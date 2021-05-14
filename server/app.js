@@ -22,7 +22,6 @@ const io = socketIo(server, {
 
 // Server var ------------
 let latestCodeVersion;
-let locked;
 let countClient = 0;
 
 // API ------------
@@ -33,20 +32,6 @@ app.get('/latest-code', (req, res) => {
   } else {
     res.json({code: 'empty-code'})
   }
-})
-app.get('/require-lock', (req, res) => {
-  console.log('require-lock called')
-  if (!locked) {
-    locked = true
-    res.json({granted: true})
-  } else {
-    res.json({granted: false})
-  }
-})
-app.get('/release-lock', (req, res) => {
-  console.log('release-lock called')
-  locked = false;
-  res.json({done: true})
 })
 
 // SOCKET -------------------
@@ -59,8 +44,7 @@ io.on("connection", (socket) => {
     console.log("Client disconnected");
     countClient--;
     if (countClient === 0) {
-      console.log('zero client, forcing lock false')
-      locked = false
+      io.emit('code-unlocked', msg)
     }
   });
 
@@ -69,6 +53,16 @@ io.on("connection", (socket) => {
     latestCodeVersion = msg
     io.emit('update-code', msg)
   });
+
+  socket.on('code-locked', (msg) => {
+    console.log('code-locked event')
+    io.emit('code-locked', msg)
+  })
+
+  socket.on('code-unlocked', (msg) => {
+    console.log('code-unlocked event')
+    io.emit('code-unlocked', msg)
+  })
 
 });
 
